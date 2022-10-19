@@ -22,17 +22,20 @@ struct Velocity(Vec2);
 
 // ゲームの単位時間
 const TIME_STEP: f32 = 1.0 / 60.0;
+
+const SCREEN_SIZE: Vec2 = Vec2::new(1280., 768.);
+
 // 左の壁
-const LEFT_WALL: f32 = -450.;
+const LEFT_WALL: f32 = -SCREEN_SIZE.x / 2.;
 // 右の壁
-const RIGHT_WALL: f32 = 450.;
+const RIGHT_WALL: f32 = SCREEN_SIZE.x / 2.;
 // 壁の厚み
 const WALL_THICKNESS: f32 = 10.0;
 
 // 自機の速度
 const KABUTO_SPEED: f32 = 500.0;
 // 自機のサイズ
-const KABUTO_SIZE: Vec3 = Vec3::new(120.0, 20.0, 0.0);
+const KABUTO_SIZE: Vec3 = Vec3::new(25.0, 25.0, 0.0);
 const KABUTO_PADDING: f32 = 10.0;
 
 // add_startup_system()に渡す最初の準備処理
@@ -75,8 +78,12 @@ fn setup_kabuto(commands: &mut Commands) {
             // Transformはスプライトの位置と大きさを定義する
             transform: Transform {
                 // 2D画面の場合、zは0.0固定
-                translation: Vec3::new(0.0, -300.0, 0.0),
-                scale: Vec3::new(25.0, 25.0, 0.0),
+                translation: Vec3::new(
+                    0.0,
+                    -SCREEN_SIZE.y / 2. + KABUTO_SIZE.y / 2. + KABUTO_PADDING,
+                    0.0,
+                ),
+                scale: KABUTO_SIZE,
                 // デフォルト値で良いものは以下のように記述を省略できる
                 ..Default::default()
             },
@@ -104,7 +111,7 @@ fn setup_shot(commands: &mut Commands, kabuto_transform: &Transform) {
         .insert(Velocity(SHOT_DIRECTION.normalize() * SHOT_SPEED))
         .insert_bundle(SpriteBundle {
             transform: Transform {
-                translation: kabuto_transform.translation + Vec3::new(0.0, 50.0, 0.0),
+                translation: kabuto_transform.translation + Vec3::new(0.0, KABUTO_SIZE.y, 0.0),
                 scale: Vec3::new(5.0, 5.0, 0.0),
                 ..Default::default()
             },
@@ -197,8 +204,8 @@ fn main() {
     App::new()
         .insert_resource(WindowDescriptor {
             title: "Kabuto Explosion Game".to_string(),
-            width: 1080.,
-            height: 768.,
+            width: SCREEN_SIZE.x,
+            height: SCREEN_SIZE.y,
             ..Default::default()
         })
         .add_plugins(DefaultPlugins)
