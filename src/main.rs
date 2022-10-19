@@ -12,6 +12,10 @@ struct Kabuto;
 #[derive(Component)]
 struct Shot;
 
+// 敵オブジェクト
+#[derive(Component)]
+struct Enemy;
+
 // 衝突判定
 #[derive(Component)]
 struct Collider;
@@ -23,11 +27,12 @@ struct Velocity(Vec2);
 // ゲームの単位時間
 const TIME_STEP: f32 = 1.0 / 60.0;
 
+// 画面のサイズ
 const SCREEN_SIZE: Vec2 = Vec2::new(1280., 768.);
 
-// 左の壁
+// 左の壁(Bevyにおける座標(0,0)は画面の中央)
 const LEFT_WALL: f32 = -SCREEN_SIZE.x / 2.;
-// 右の壁
+// 右の壁(Bevyにおける座標(0,0)は画面の中央)
 const RIGHT_WALL: f32 = SCREEN_SIZE.x / 2.;
 // 壁の厚み
 const WALL_THICKNESS: f32 = 10.0;
@@ -123,6 +128,31 @@ fn setup_shot(commands: &mut Commands, kabuto_transform: &Transform) {
         });
 }
 
+// 敵オブジェクトを画面に追加する
+fn setup_enemy(mut commands: Commands) {
+    // ひとまず右方向にまっすぐ進むだけ
+    const ENEMY_DIRECTION: Vec2 = Vec2::new(1.0, 0.0);
+    const ENEMY_SPEED: f32 = 400.;
+    commands
+        .spawn()
+        .insert(Enemy)
+        .insert(Collider)
+        .insert(Velocity(ENEMY_DIRECTION.normalize() * ENEMY_SPEED))
+        .insert_bundle(SpriteBundle {
+            transform: Transform {
+                // 画面の左上に出現する
+                translation: Vec3::new(-SCREEN_SIZE.x / 2., SCREEN_SIZE.y / 3., 0.),
+                scale: Vec3::new(50., 50., 0.),
+                ..Default::default()
+            },
+            sprite: Sprite {
+                color: Color::rgb(0., 0., 1.),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+}
+
 // SystemSet::with_system()に渡す「自機を移動させるシステム」
 // 引数の型と並びはほぼ任意
 fn move_kabuto(
@@ -154,15 +184,17 @@ fn move_kabuto(
 fn shoot(
     // キーボード入力
     keyboard_input: Res<Input<KeyCode>>,
+    // マウス入力
     mouse_input: Res<Input<MouseButton>>,
     // 自機の位置
     mut query: Query<&mut Transform, With<Kabuto>>,
     mut commands: Commands,
 ) {
     let kabuto_transform = query.single_mut();
+    // スペースキーまたは左クリックのリリースを検出する
     if keyboard_input.just_released(KeyCode::Space) || mouse_input.just_released(MouseButton::Left)
     {
-        // スペースキーが押下>>リリースされていたら自機の位置を元に弾を1個生成する
+        // 対象のキーが押下>>リリースされていたら自機の位置を元に弾を1個生成する
         setup_shot(&mut commands, &kabuto_transform);
     }
 }
@@ -198,6 +230,14 @@ impl Plugin for GamePlugin {
                     .with_system(shoot)
                     // 時間経過で移動するオブジェクト向けの位置更新システムを追加
                     .with_system(apply_velocity),
+            )
+            .add_system_set(
+                // 一定時間毎に敵オブジェクトを画面に追加するシステム
+                SystemSet::new()
+                    // 120F毎に実行する
+                    .with_run_criteria(FixedTimestep::step(120. / 60.))
+                    // 敵オブジェクト生成システム
+                    .with_system(setup_enemy),
             );
     }
 }
