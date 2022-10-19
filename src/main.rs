@@ -135,10 +135,10 @@ fn move_kabuto(
     let mut kabuto_transform = query.single_mut();
     let mut direction = 0.0;
     // 押下されてるキーに応じて方向を決める
-    if keyboard_input.pressed(KeyCode::Left) {
+    if keyboard_input.pressed(KeyCode::Left) || keyboard_input.pressed(KeyCode::A) {
         direction -= 1.0;
     }
-    if keyboard_input.pressed(KeyCode::Right) {
+    if keyboard_input.pressed(KeyCode::Right) || keyboard_input.pressed(KeyCode::D) {
         direction += 1.0;
     }
     // 現在の自機の位置に方向*速度*単位時間を加算して新しい位置を決める
@@ -154,13 +154,15 @@ fn move_kabuto(
 fn shoot(
     // キーボード入力
     keyboard_input: Res<Input<KeyCode>>,
+    mouse_input: Res<Input<MouseButton>>,
     // 自機の位置
     mut query: Query<&mut Transform, With<Kabuto>>,
     mut commands: Commands,
 ) {
     let kabuto_transform = query.single_mut();
-    if keyboard_input.pressed(KeyCode::Space) {
-        // スペースキーが押下されていたら自機の位置を元に弾を1個生成する
+    if keyboard_input.just_released(KeyCode::Space) || mouse_input.just_released(MouseButton::Left)
+    {
+        // スペースキーが押下>>リリースされていたら自機の位置を元に弾を1個生成する
         setup_shot(&mut commands, &kabuto_transform);
     }
 }
