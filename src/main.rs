@@ -20,6 +20,9 @@ struct Enemy;
 #[derive(Component)]
 struct Collider;
 
+#[derive(Default)]
+struct CollisionEvent;
+
 // 速度
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
@@ -210,6 +213,45 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
     }
 }
 
+// 衝突判定システム
+fn collision_check_system(
+    // Entityの追加や削除を行いたいのでコマンドを貰うことにする
+    mut commands: Commands,
+    // 撃った弾のクエリ(衝突判定に使うためのTransformと、画面から削除するためのEntityをShotコンポーネントについて集める)
+    shot_query: Query<(Entity, &Transform), With<Shot>>,
+    // 衝突判定を持ったEntityのクエリ(EntityがEnemyだった場合に別の処理ができるようにOptionでEnemyか否かを判定できるようにする)
+    collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<Collider>>,
+    // 他のシステム関数が衝突イベントを検出できるようにするためのイベント発行オブジェクト
+    mut collision_events: EventWriter<CollisionEvent>,
+) {
+    // 撃った弾のクエリからEntityとTransformを取り出す
+    for (shot_entity, shot_transform) in &shot_query {
+        // 撃った弾のサイズをTransformから取り出す
+        let shot_size = shot_transform.scale.truncate();
+        // 衝突判定持ちのクエリからEntity, Transformを取り出して順次処理する
+        for (collider_entity, collider_transform, maybe_enemy) in &collider_query {
+            // 弾との衝突判定をBevyのcollide()関数で行う
+            // 衝突判定には2つのEntityの位置(translation)とサイズが必要
+            let collision = collide(
+                shot_transform.translation,
+                shot_size,
+                collider_transform.translation,
+                collider_transform.scale.truncate(),
+            );
+            if let Some(collision) = collision {
+                // 衝突が発生した場合
+                // 衝突イベントを発行して他のシステムにも知らせる
+                collision_events.send_default();
+                if maybe_enemy.is_some() {
+                    // 弾が当たったのがEnemyだった場合
+                    // Enemyを画面から消去する
+                    commands.entity(collider_entity).despawn();
+                }
+            }
+        }
+    }
+}
+
 // 任意のプラグイン構造体
 pub struct GamePlugin;
 // Pluginトレイトを実装させる
@@ -219,11 +261,14 @@ impl Plugin for GamePlugin {
         app.add_startup_system(setup)
             // 背景色を指定
             .insert_resource(ClearColor(Color::rgb(0.3, 0.5, 0.4)))
+            .add_event::<CollisionEvent>()
             // システムを決める
             .add_system_set(
                 SystemSet::new()
                     // ゲームの単位時間毎にこのシステムを実行する
                     .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
+                    // 衝突判定システムを追加
+                    .with_system(collision_check_system)
                     // 自機の移動システムを追加
                     .with_system(move_kabuto)
                     // 弾の生成システムを追加
