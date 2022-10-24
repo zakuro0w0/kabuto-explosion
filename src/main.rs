@@ -20,12 +20,23 @@ struct Enemy;
 #[derive(Component)]
 struct Collider;
 
+// 衝突イベント
 #[derive(Default)]
 struct CollisionEvent;
+
+// 弾を撃つイベント
+#[derive(Default)]
+struct ShotEvent;
 
 // 速度
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
+
+// 弾ヒット時のサウンドエフェクト
+struct HitSound(Handle<AudioSource>);
+
+// 弾を撃った時のサウンドエフェクト
+struct ShotSound(Handle<AudioSource>);
 
 // ゲームの単位時間
 const TIME_STEP: f32 = 1.0 / 60.0;
@@ -47,27 +58,17 @@ const KABUTO_SIZE: Vec3 = Vec3::new(25.0, 25.0, 0.0);
 const KABUTO_PADDING: f32 = 10.0;
 
 // add_startup_system()に渡す最初の準備処理
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // 2D画面用のカメラを設定する
     commands.spawn_bundle(Camera2dBundle::default());
     // 自機を初期化する
     setup_kabuto(&mut commands);
-}
-
-// ブロックのスプライト
-fn block(translation: Vec3) -> SpriteBundle {
-    SpriteBundle {
-        sprite: Sprite {
-            color: Color::rgb(1.00, 0.25, 0.25),
-            custom_size: Some(Vec2::new(5.0, 5.0)),
-            ..Default::default()
-        },
-        transform: Transform {
-            translation: translation,
-            ..Default::default()
-        },
-        ..Default::default()
-    }
+    // 効果音のリソースを作成(mp3ではダメだったのでoggに変換した)
+    let hit_sound = asset_server.load("hit.ogg");
+    let shot_sound = asset_server.load("shot.ogg");
+    // 効果音と紐付く構造体をリソースとして追加
+    commands.insert_resource(HitSound(hit_sound));
+    commands.insert_resource(ShotSound(shot_sound));
 }
 
 // 自機のセットアップ
@@ -113,7 +114,6 @@ fn setup_shot(commands: &mut Commands, kabuto_transform: &Transform) {
     commands
         .spawn()
         .insert(Shot)
-        .insert(Collider)
         // 弾は時間経過で動かす必要がある
         // 弾の基本ベクトルに速度を掛けたものを適用する
         .insert(Velocity(SHOT_DIRECTION.normalize() * SHOT_SPEED))
@@ -189,6 +189,8 @@ fn shoot(
     keyboard_input: Res<Input<KeyCode>>,
     // マウス入力
     mouse_input: Res<Input<MouseButton>>,
+    // 射撃イベント
+    mut shot_events: EventWriter<ShotEvent>,
     // 自機の位置
     mut query: Query<&mut Transform, With<Kabuto>>,
     mut commands: Commands,
@@ -199,6 +201,8 @@ fn shoot(
     {
         // 対象のキーが押下>>リリースされていたら自機の位置を元に弾を1個生成する
         setup_shot(&mut commands, &kabuto_transform);
+        // 射撃イベントを発行する
+        shot_events.send_default();
     }
 }
 
@@ -240,6 +244,7 @@ fn collision_check_system(
             );
             if let Some(collision) = collision {
                 // 衝突が発生した場合
+                println!("collision!");
                 // 衝突イベントを発行して他のシステムにも知らせる
                 collision_events.send_default();
                 if maybe_enemy.is_some() {
@@ -252,6 +257,33 @@ fn collision_check_system(
     }
 }
 
+// 衝突時の効果音を再生するシステム
+fn play_hit_sound(
+    // 衝突イベント
+    collision_events: EventReader<CollisionEvent>,
+    // Audioリソース
+    audio: Res<Audio>,
+    // 衝突効果音
+    sound: Res<HitSound>,
+) {
+    if !collision_events.is_empty() {
+        // 衝突イベントが空っぽでない場合
+        println!("play_hit_sound()!");
+        // 衝突イベントを空にする
+        collision_events.clear();
+        // 衝突効果音を再生する
+        audio.play(sound.0.clone());
+    }
+}
+
+// 射撃時の効果音を再生するシステム
+fn play_shot_sound(shot_events: EventReader<ShotEvent>, audio: Res<Audio>, sound: Res<ShotSound>) {
+    if !shot_events.is_empty() {
+        shot_events.clear();
+        audio.play(sound.0.clone());
+    }
+}
+
 // 任意のプラグイン構造体
 pub struct GamePlugin;
 // Pluginトレイトを実装させる
@@ -261,7 +293,10 @@ impl Plugin for GamePlugin {
         app.add_startup_system(setup)
             // 背景色を指定
             .insert_resource(ClearColor(Color::rgb(0.3, 0.5, 0.4)))
+            // 衝突イベントがあることを教える
             .add_event::<CollisionEvent>()
+            // 射撃イベントがあることを教える
+            .add_event::<ShotEvent>()
             // システムを決める
             .add_system_set(
                 SystemSet::new()
@@ -270,11 +305,15 @@ impl Plugin for GamePlugin {
                     // 衝突判定システムを追加
                     .with_system(collision_check_system)
                     // 自機の移動システムを追加
-                    .with_system(move_kabuto)
+                    .with_system(move_kabuto.before(collision_check_system))
                     // 弾の生成システムを追加
-                    .with_system(shoot)
+                    .with_system(shoot.before(collision_check_system))
                     // 時間経過で移動するオブジェクト向けの位置更新システムを追加
-                    .with_system(apply_velocity),
+                    .with_system(apply_velocity.before(collision_check_system))
+                    // ヒット効果音再生システムを追加
+                    .with_system(play_hit_sound.after(collision_check_system))
+                    // 射撃効果音再生システムを追加
+                    .with_system(play_shot_sound),
             )
             .add_system_set(
                 // 一定時間毎に敵オブジェクトを画面に追加するシステム
