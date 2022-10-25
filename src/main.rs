@@ -16,6 +16,12 @@ struct Shot;
 #[derive(Component)]
 struct Enemy;
 
+// スコア表示
+#[derive(Component)]
+struct ScoreBoard {
+    score: usize,
+}
+
 // 衝突判定
 #[derive(Component)]
 struct Collider;
@@ -58,11 +64,13 @@ const KABUTO_SIZE: Vec3 = Vec3::new(25.0, 25.0, 0.0);
 const KABUTO_PADDING: f32 = 10.0;
 
 // add_startup_system()に渡す最初の準備処理
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands, mut asset_server: Res<AssetServer>) {
     // 2D画面用のカメラを設定する
     commands.spawn_bundle(Camera2dBundle::default());
     // 自機を初期化する
     setup_kabuto(&mut commands);
+    // スコアボードを初期化する
+    setup_scoreboard(&mut commands, &mut asset_server);
     // 効果音のリソースを作成(mp3ではダメだったのでoggに変換した)
     let hit_sound = asset_server.load("hit.ogg");
     let shot_sound = asset_server.load("shot.ogg");
@@ -129,6 +137,56 @@ fn setup_shot(commands: &mut Commands, kabuto_transform: &Transform) {
             },
             ..Default::default()
         });
+}
+
+// スコアボードを生成する
+fn setup_scoreboard(commands: &mut Commands, asset_server: &mut Res<AssetServer>) {
+    // スコアボードのフォントサイズ
+    const SCOREBOARD_FONT_SIZE: f32 = 50.;
+    // スコアボードのパディング
+    const SCOREBORAD_TEXT_PADDING: Val = Val::Px(10.);
+    // スコア表示の色
+    const TEXT_COLOR: Color = Color::rgb(1., 1., 1.);
+    // テキストスタイル
+    let style = TextStyle {
+        // フォントはassetsから読み込む
+        font: asset_server.load("misaki_gothic.ttf"),
+        font_size: SCOREBOARD_FONT_SIZE,
+        color: TEXT_COLOR,
+    };
+    commands.spawn().insert_bundle(
+        // テキストは複数のセクションで構成することもできる
+        TextBundle::from_sections([
+            // 固定で表示する方
+            TextSection::new("Score: ", style.clone()),
+            // 可変の数値を表示する方
+            TextSection::from_style(style.clone()),
+        ])
+        // テキストの場合はTransformではなくStyleで位置を決める
+        .with_style(Style {
+            // 絶対位置指定
+            position_type: PositionType::Absolute,
+            // 画面の左上からパディングの分だけ空けた位置を指定する
+            // PositionType::Absoluteだと画面左上が原点(0,0)になる？
+            position: UiRect {
+                top: SCOREBORAD_TEXT_PADDING,
+                left: SCOREBORAD_TEXT_PADDING,
+                ..default()
+            },
+            ..default()
+        }),
+    );
+}
+
+// スコアボードを更新するシステム
+// TextBundleからはTextを取得することができる
+// with_run_criteria()で実行間隔を指定しない場合はいつ実行される？
+// ScoreBoardのEntityに変化があったら自動的に呼び出してくれる？
+fn update_scoreboard(scoreboard: Res<ScoreBoard>, mut query: Query<&mut Text>) {
+    let mut text = query.single_mut();
+    // TextにはTextSectionで指定した分だけセクション配列が含まれている
+    // 2番めのセクションにスコア数値を書き込む
+    text.sections[1].value = scoreboard.score.to_string();
 }
 
 // 敵オブジェクトを画面に追加する
@@ -227,6 +285,8 @@ fn collision_check_system(
     collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<Collider>>,
     // 他のシステム関数が衝突イベントを検出できるようにするためのイベント発行オブジェクト
     mut collision_events: EventWriter<CollisionEvent>,
+    // スコアボードEntity
+    mut scoreboad: ResMut<ScoreBoard>,
 ) {
     // 撃った弾のクエリからEntityとTransformを取り出す
     for (shot_entity, shot_transform) in &shot_query {
@@ -251,6 +311,8 @@ fn collision_check_system(
                     // 弾が当たったのがEnemyだった場合
                     // Enemyを画面から消去する
                     commands.entity(collider_entity).despawn();
+                    // スコアを加算する(今はとりあえず1個破壊毎に100点)
+                    scoreboad.score += 100;
                 }
             }
         }
@@ -293,6 +355,8 @@ impl Plugin for GamePlugin {
         app.add_startup_system(setup)
             // 背景色を指定
             .insert_resource(ClearColor(Color::rgb(0.3, 0.5, 0.4)))
+            // スコアボードを追加
+            .insert_resource(ScoreBoard { score: 0 })
             // 衝突イベントがあることを教える
             .add_event::<CollisionEvent>()
             // 射撃イベントがあることを教える
@@ -315,6 +379,8 @@ impl Plugin for GamePlugin {
                     // 射撃効果音再生システムを追加
                     .with_system(play_shot_sound),
             )
+            // スコアボード更新システムを追加
+            .add_system(update_scoreboard)
             .add_system_set(
                 // 一定時間毎に敵オブジェクトを画面に追加するシステム
                 SystemSet::new()
