@@ -14,7 +14,10 @@ struct Shot;
 
 // 敵オブジェクト
 #[derive(Component)]
-struct Enemy;
+struct Enemy {
+    // 生まれてからの生存期間
+    lifetime: f32,
+}
 
 // スコア表示
 #[derive(Component)]
@@ -196,7 +199,7 @@ fn setup_enemy(mut commands: Commands) {
     const ENEMY_SPEED: f32 = 400.;
     commands
         .spawn()
-        .insert(Enemy)
+        .insert(Enemy { lifetime: 0. })
         .insert(Collider)
         .insert(Velocity(ENEMY_DIRECTION.normalize() * ENEMY_SPEED))
         .insert_bundle(SpriteBundle {
@@ -272,6 +275,21 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
         // 速度*単位時間を加算して位置を更新する
         transform.translation.x += velocity.x * TIME_STEP;
         transform.translation.y += velocity.y * TIME_STEP;
+    }
+}
+
+// 敵オブジェクトに重力の影響を適用するシステム
+fn apply_enemy_gravity(mut query: Query<(&mut Transform, &Velocity, &mut Enemy), With<Enemy>>) {
+    // 重力加速度(数値の大きさは調整中)
+    const GRAVITY: Vec2 = Vec2::new(0., 9.8 * 100.);
+    for (mut transform, velocity, mut enemy) in &mut query {
+        // 生存期間を増やす
+        enemy.lifetime += TIME_STEP;
+        // 生存期間が長いほどより強く重力が掛かるようにする
+        let v = velocity.y + GRAVITY * enemy.lifetime;
+        // 敵オブジェクトのY軸位置に重力の影響を加える
+        transform.translation.y -= v.y * TIME_STEP;
+        println!("y=[{}], v=[{}]", transform.translation.y, v);
     }
 }
 
@@ -374,6 +392,8 @@ impl Plugin for GamePlugin {
                     .with_system(shoot.before(collision_check_system))
                     // 時間経過で移動するオブジェクト向けの位置更新システムを追加
                     .with_system(apply_velocity.before(collision_check_system))
+                    // 敵オブジェクトに重力の影響を与えるシステムを追加
+                    .with_system(apply_enemy_gravity.before(collision_check_system))
                     // ヒット効果音再生システムを追加
                     .with_system(play_hit_sound.after(collision_check_system))
                     // 射撃効果音再生システムを追加
