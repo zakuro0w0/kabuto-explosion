@@ -37,6 +37,68 @@ struct CollisionEvent;
 #[derive(Default)]
 struct ShotEvent;
 
+// 壁の位置
+enum WallLocation {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl WallLocation {
+    // 壁の位置を返す
+    fn position(&self) -> Vec2 {
+        match self {
+            WallLocation::Left => Vec2::new(LEFT_WALL, 0.),
+            WallLocation::Right => Vec2::new(RIGHT_WALL, 0.),
+            WallLocation::Top => Vec2::new(0., TOP_WALL),
+            WallLocation::Bottom => Vec2::new(0., BOTTOM_WALL),
+        }
+    }
+    // 壁のサイズを返す
+    fn size(&self) -> Vec2 {
+        match self {
+            // 左右の壁
+            WallLocation::Left | WallLocation::Right => {
+                Vec2::new(WALL_THICKNESS, SCREEN_SIZE.y + WALL_THICKNESS)
+            }
+            // 上下の壁
+            WallLocation::Bottom | WallLocation::Top => {
+                Vec2::new(SCREEN_SIZE.x + WALL_THICKNESS, WALL_THICKNESS)
+            }
+        }
+    }
+}
+
+// 壁オブジェクト
+#[derive(Bundle)]
+struct WallBundle {
+    #[bundle]
+    sprite_bundle: SpriteBundle,
+    collider: Collider,
+}
+
+impl WallBundle {
+    // 壁オブジェクトをWallLocationから作る
+    fn new(location: WallLocation) -> WallBundle {
+        WallBundle {
+            sprite_bundle: SpriteBundle {
+                transform: Transform {
+                    translation: location.position().extend(0.0),
+                    scale: location.size().extend(1.0),
+                    ..default()
+                },
+                sprite: Sprite {
+                    color: WALL_COLOR,
+                    ..default()
+                },
+                ..default()
+            },
+            collider: Collider,
+        }
+    }
+}
+
 // 速度
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
@@ -57,8 +119,14 @@ const SCREEN_SIZE: Vec2 = Vec2::new(1280., 768.);
 const LEFT_WALL: f32 = -SCREEN_SIZE.x / 2.;
 // 右の壁(Bevyにおける座標(0,0)は画面の中央)
 const RIGHT_WALL: f32 = SCREEN_SIZE.x / 2.;
+// 上の壁
+const TOP_WALL: f32 = SCREEN_SIZE.y / 2.;
+// 下の壁
+const BOTTOM_WALL: f32 = -SCREEN_SIZE.y / 2.;
 // 壁の厚み
 const WALL_THICKNESS: f32 = 10.0;
+// 壁の色
+const WALL_COLOR: Color = Color::rgb(0., 0., 0.);
 
 // 自機の速度
 const KABUTO_SPEED: f32 = 500.0;
@@ -80,6 +148,11 @@ fn setup(mut commands: Commands, mut asset_server: Res<AssetServer>) {
     // 効果音と紐付く構造体をリソースとして追加
     commands.insert_resource(HitSound(hit_sound));
     commands.insert_resource(ShotSound(shot_sound));
+    // 上下左右の壁を追加
+    commands.spawn_bundle(WallBundle::new(WallLocation::Left));
+    commands.spawn_bundle(WallBundle::new(WallLocation::Right));
+    commands.spawn_bundle(WallBundle::new(WallLocation::Top));
+    commands.spawn_bundle(WallBundle::new(WallLocation::Bottom));
 }
 
 // 自機のセットアップ
@@ -322,11 +395,10 @@ fn collision_check_system(
             );
             if let Some(collision) = collision {
                 // 衝突が発生した場合
-                println!("collision!");
-                // 衝突イベントを発行して他のシステムにも知らせる
-                collision_events.send_default();
                 if maybe_enemy.is_some() {
                     // 弾が当たったのがEnemyだった場合
+                    // 衝突イベントを発行して他のシステムにも知らせる
+                    collision_events.send_default();
                     // Enemyを画面から消去する
                     commands.entity(collider_entity).despawn();
                     // スコアを加算する(今はとりあえず1個破壊毎に100点)
