@@ -26,3 +26,35 @@
 - [[WIP] Entity-Component-System 実装！](https://zenn.dev/toyboot4e/books/making-toy-ecs)
   - ECSはゲーム制作における代表的なアーキテクチャ
   - BevyもECSアーキテクチャに沿った設計・実装が行われている
+
+## WebAssembly化してブラウザ上で動作させる
+
+### 参考にしたURL
+- [自作のRust製エミュレーターをWebブラウザーで動くようにした](https://zenn.dev/tanakh/articles/rust-emulator-in-browser)
+  - ここがわかりやすかった
+- [Introduction - Rust and WebAssembly](https://rustwasm.github.io/docs/book/)
+  - Rust公式、順を追って説明しているが少し手間が掛かる
+- [Browser (WebAssembly) - Unofficial Bevy Cheat Book](https://bevy-cheatbook.github.io/platforms/wasm.html)
+  - Bevy公式、簡単
+
+### 手順
+
+```
+rustup target install wasm32-unknown-unknown
+```
+
+```
+cargo install wasm-server-runner
+```
+
+#### .cargo/config.toml
+```toml
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
+```
+
+```
+cargo run --target wasm32-unknown-unknown
+```
+
+- webブラウザで`localhost:1334`を開くとアプリが動き始める
