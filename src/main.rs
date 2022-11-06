@@ -1,5 +1,6 @@
 use bevy::{
     prelude::*,
+    render::render_resource::encase::rts_array::Truncate,
     sprite::collide_aabb::{collide, Collision},
     time::FixedTimestep,
 };
@@ -25,9 +26,13 @@ struct ScoreBoard {
     score: usize,
 }
 
-// 衝突判定
+// 弾との衝突判定
 #[derive(Component)]
-struct Collider;
+struct ShotCollider;
+
+// バウンドの衝突判定
+#[derive(Component)]
+struct BoundCollider;
 
 // 衝突イベント
 #[derive(Default)]
@@ -75,7 +80,7 @@ impl WallLocation {
 struct WallBundle {
     #[bundle]
     sprite_bundle: SpriteBundle,
-    collider: Collider,
+    collider: BoundCollider,
 }
 
 impl WallBundle {
@@ -94,7 +99,7 @@ impl WallBundle {
                 },
                 ..default()
             },
-            collider: Collider,
+            collider: BoundCollider,
         }
     }
 }
@@ -164,8 +169,6 @@ fn setup_kabuto(commands: &mut Commands) {
         // ここで関連付けておくことで、Queryを引数に取る際にWith<T: Component>で
         // 特定のComponentだけを対象にした処理を記述することができる
         .insert(Kabuto)
-        // 衝突判定用のComponentを関連付ける
-        .insert(Collider)
         // 外観となるスプライトを設定する
         .insert_bundle(SpriteBundle {
             // Transformはスプライトの位置と大きさを定義する
@@ -268,12 +271,12 @@ fn update_scoreboard(scoreboard: Res<ScoreBoard>, mut query: Query<&mut Text>) {
 // 敵オブジェクトを画面に追加する
 fn setup_enemy(mut commands: Commands) {
     // ひとまず右方向にまっすぐ進むだけ
-    const ENEMY_DIRECTION: Vec2 = Vec2::new(1.0, 0.0);
+    const ENEMY_DIRECTION: Vec2 = Vec2::new(1.0, 0.);
     const ENEMY_SPEED: f32 = 400.;
     commands
         .spawn()
         .insert(Enemy { lifetime: 0. })
-        .insert(Collider)
+        .insert(ShotCollider)
         .insert(Velocity(ENEMY_DIRECTION.normalize() * ENEMY_SPEED))
         .insert_bundle(SpriteBundle {
             transform: Transform {
@@ -352,28 +355,27 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
 }
 
 // 敵オブジェクトに重力の影響を適用するシステム
-fn apply_enemy_gravity(mut query: Query<(&mut Transform, &Velocity, &mut Enemy), With<Enemy>>) {
+fn apply_enemy_gravity(mut query: Query<(&mut Transform, &mut Velocity, &mut Enemy), With<Enemy>>) {
     // 重力加速度(数値の大きさは調整中)
-    const GRAVITY: Vec2 = Vec2::new(0., 9.8 * 100.);
-    for (mut transform, velocity, mut enemy) in &mut query {
+    const GRAVITY: Vec2 = Vec2::new(0., -9.8);
+    for (mut transform, mut velocity, mut enemy) in &mut query {
         // 生存期間を増やす
         enemy.lifetime += TIME_STEP;
         // 生存期間が長いほどより強く重力が掛かるようにする
-        let v = velocity.y + GRAVITY * enemy.lifetime;
+        velocity.y += GRAVITY.normalize().y * enemy.lifetime;
         // 敵オブジェクトのY軸位置に重力の影響を加える
-        transform.translation.y -= v.y * TIME_STEP;
-        println!("y=[{}], v=[{}]", transform.translation.y, v);
+        transform.translation.y += velocity.y * TIME_STEP;
     }
 }
 
-// 衝突判定システム
-fn collision_check_system(
+// 撃った弾と敵の衝突判定システム
+fn shot_enemy_collision(
     // Entityの追加や削除を行いたいのでコマンドを貰うことにする
     mut commands: Commands,
     // 撃った弾のクエリ(衝突判定に使うためのTransformと、画面から削除するためのEntityをShotコンポーネントについて集める)
     shot_query: Query<(Entity, &Transform), With<Shot>>,
     // 衝突判定を持ったEntityのクエリ(EntityがEnemyだった場合に別の処理ができるようにOptionでEnemyか否かを判定できるようにする)
-    collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<Collider>>,
+    collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<ShotCollider>>,
     // 他のシステム関数が衝突イベントを検出できるようにするためのイベント発行オブジェクト
     mut collision_events: EventWriter<CollisionEvent>,
     // スコアボードEntity
@@ -409,6 +411,87 @@ fn collision_check_system(
     }
 }
 
+// 敵と壁の衝突判定システム
+fn enemy_bound_collision(
+    mut enemies: Query<(&mut Velocity, &Transform), With<Enemy>>,
+    bound_collider: Query<(&Transform), With<BoundCollider>>,
+) {
+    for (mut enemy_velocity, enemy_transform) in &mut enemies {
+        let enemy_size = enemy_transform.scale.truncate();
+        for bound_transform in &bound_collider {
+            let collision = collide(
+                enemy_transform.translation,
+                enemy_size,
+                bound_transform.translation,
+                bound_transform.scale.truncate(),
+            );
+
+            let print_collision = || {
+                println!("enemy_transform: {}", enemy_transform.translation);
+                println!("enemy_size: {}", enemy_size);
+                println!("bound_transform: {}", bound_transform.translation);
+                println!("bound_size: {}", bound_transform.scale.truncate());
+            };
+
+            if let Some(collision) = collision {
+                println!("----------------- collision ----------------");
+                let mut reflect_x = false;
+                let mut reflect_y = false;
+                match collision {
+                    Collision::Left => {
+                        print_collision();
+                        println!("left");
+                        reflect_x = enemy_velocity.x > 0.0
+                    }
+                    Collision::Right => {
+                        print_collision();
+                        println!("right");
+                        reflect_x = enemy_velocity.x < 0.0
+                    }
+                    Collision::Top => {
+                        print_collision();
+                        println!("top");
+                        reflect_y = enemy_velocity.y < 0.0
+                    }
+                    Collision::Bottom => {
+                        print_collision();
+                        println!("bottom");
+                        reflect_y = enemy_velocity.y > 0.0
+                    }
+                    Collision::Inside => {
+                        print_collision();
+                        println!("inside");
+                    }
+                }
+                if reflect_x {
+                    println!("reflect x");
+                    println!(
+                        "before velocity=({}, {})",
+                        enemy_velocity.x, enemy_velocity.y
+                    );
+                    enemy_velocity.x = -enemy_velocity.x;
+                    println!(
+                        "after  velocity=({}, {})",
+                        enemy_velocity.x, enemy_velocity.y
+                    );
+                }
+                if reflect_y {
+                    println!("reflect y");
+                    println!(
+                        "before velocity=({}, {})",
+                        enemy_velocity.x, enemy_velocity.y
+                    );
+                    enemy_velocity.y = -enemy_velocity.y;
+                    println!(
+                        "after  velocity=({}, {})",
+                        enemy_velocity.x, enemy_velocity.y
+                    );
+                }
+            }
+        }
+    }
+}
+
 // 衝突時の効果音を再生するシステム
 fn play_hit_sound(
     // 衝突イベント
@@ -420,7 +503,6 @@ fn play_hit_sound(
 ) {
     if !collision_events.is_empty() {
         // 衝突イベントが空っぽでない場合
-        println!("play_hit_sound()!");
         // 衝突イベントを空にする
         collision_events.clear();
         // 衝突効果音を再生する
@@ -457,17 +539,18 @@ impl Plugin for GamePlugin {
                     // ゲームの単位時間毎にこのシステムを実行する
                     .with_run_criteria(FixedTimestep::step(TIME_STEP as f64))
                     // 衝突判定システムを追加
-                    .with_system(collision_check_system)
+                    .with_system(shot_enemy_collision)
+                    .with_system(enemy_bound_collision)
                     // 自機の移動システムを追加
-                    .with_system(move_kabuto.before(collision_check_system))
+                    .with_system(move_kabuto.before(shot_enemy_collision))
                     // 弾の生成システムを追加
-                    .with_system(shoot.before(collision_check_system))
+                    .with_system(shoot.before(shot_enemy_collision))
                     // 時間経過で移動するオブジェクト向けの位置更新システムを追加
-                    .with_system(apply_velocity.before(collision_check_system))
+                    .with_system(apply_velocity.before(shot_enemy_collision))
                     // 敵オブジェクトに重力の影響を与えるシステムを追加
-                    .with_system(apply_enemy_gravity.before(collision_check_system))
+                    .with_system(apply_enemy_gravity.before(shot_enemy_collision))
                     // ヒット効果音再生システムを追加
-                    .with_system(play_hit_sound.after(collision_check_system))
+                    .with_system(play_hit_sound.after(shot_enemy_collision))
                     // 射撃効果音再生システムを追加
                     .with_system(play_shot_sound),
             )
