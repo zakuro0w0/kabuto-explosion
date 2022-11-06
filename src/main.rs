@@ -1,6 +1,5 @@
 use bevy::{
     prelude::*,
-    render::render_resource::encase::rts_array::Truncate,
     sprite::collide_aabb::{collide, Collision},
     time::FixedTimestep,
 };
@@ -129,9 +128,9 @@ const TOP_WALL: f32 = SCREEN_SIZE.y / 2.;
 // 下の壁
 const BOTTOM_WALL: f32 = -SCREEN_SIZE.y / 2.;
 // 壁の厚み
-const WALL_THICKNESS: f32 = 10.0;
+const WALL_THICKNESS: f32 = 50.0;
 // 壁の色
-const WALL_COLOR: Color = Color::rgb(0., 0., 0.);
+const WALL_COLOR: Color = Color::rgba(0., 0., 0., 0.);
 
 // 自機の速度
 const KABUTO_SPEED: f32 = 500.0;
@@ -176,7 +175,7 @@ fn setup_kabuto(commands: &mut Commands) {
                 // 2D画面の場合、zは0.0固定
                 translation: Vec3::new(
                     0.0,
-                    -SCREEN_SIZE.y / 2. + KABUTO_SIZE.y / 2. + KABUTO_PADDING,
+                    BOTTOM_WALL + WALL_THICKNESS / 2. + KABUTO_SIZE.y / 2. + KABUTO_PADDING,
                     0.0,
                 ),
                 scale: KABUTO_SIZE,
@@ -277,6 +276,7 @@ fn setup_enemy(mut commands: Commands) {
         .spawn()
         .insert(Enemy { lifetime: 0. })
         .insert(ShotCollider)
+        .insert(BoundCollider)
         .insert(Velocity(ENEMY_DIRECTION.normalize() * ENEMY_SPEED))
         .insert_bundle(SpriteBundle {
             transform: Transform {
@@ -427,65 +427,65 @@ fn enemy_bound_collision(
             );
 
             let print_collision = || {
-                println!("enemy_transform: {}", enemy_transform.translation);
-                println!("enemy_size: {}", enemy_size);
-                println!("bound_transform: {}", bound_transform.translation);
-                println!("bound_size: {}", bound_transform.scale.truncate());
+                // println!("enemy_transform: {}", enemy_transform.translation);
+                // println!("enemy_size: {}", enemy_size);
+                // println!("bound_transform: {}", bound_transform.translation);
+                // println!("bound_size: {}", bound_transform.scale.truncate());
             };
 
             if let Some(collision) = collision {
-                println!("----------------- collision ----------------");
+                // println!("----------------- collision ----------------");
                 let mut reflect_x = false;
                 let mut reflect_y = false;
                 match collision {
                     Collision::Left => {
                         print_collision();
-                        println!("left");
+                        // println!("left");
                         reflect_x = enemy_velocity.x > 0.0
                     }
                     Collision::Right => {
                         print_collision();
-                        println!("right");
+                        // println!("right");
                         reflect_x = enemy_velocity.x < 0.0
                     }
                     Collision::Top => {
                         print_collision();
-                        println!("top");
+                        // println!("top");
                         reflect_y = enemy_velocity.y < 0.0
                     }
                     Collision::Bottom => {
                         print_collision();
-                        println!("bottom");
+                        // println!("bottom");
                         reflect_y = enemy_velocity.y > 0.0
                     }
                     Collision::Inside => {
                         print_collision();
-                        println!("inside");
+                        // println!("inside");
                     }
                 }
                 if reflect_x {
-                    println!("reflect x");
-                    println!(
-                        "before velocity=({}, {})",
-                        enemy_velocity.x, enemy_velocity.y
-                    );
+                    // println!("reflect x");
+                    // println!(
+                    //     "before velocity=({}, {})",
+                    //     enemy_velocity.x, enemy_velocity.y
+                    // );
                     enemy_velocity.x = -enemy_velocity.x;
-                    println!(
-                        "after  velocity=({}, {})",
-                        enemy_velocity.x, enemy_velocity.y
-                    );
+                    // println!(
+                    //     "after  velocity=({}, {})",
+                    //     enemy_velocity.x, enemy_velocity.y
+                    // );
                 }
                 if reflect_y {
-                    println!("reflect y");
-                    println!(
-                        "before velocity=({}, {})",
-                        enemy_velocity.x, enemy_velocity.y
-                    );
+                    // println!("reflect y");
+                    // println!(
+                    //     "before velocity=({}, {})",
+                    //     enemy_velocity.x, enemy_velocity.y
+                    // );
                     enemy_velocity.y = -enemy_velocity.y;
-                    println!(
-                        "after  velocity=({}, {})",
-                        enemy_velocity.x, enemy_velocity.y
-                    );
+                    // println!(
+                    //     "after  velocity=({}, {})",
+                    //     enemy_velocity.x, enemy_velocity.y
+                    // );
                 }
             }
         }
